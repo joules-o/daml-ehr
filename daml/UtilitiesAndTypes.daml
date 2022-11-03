@@ -1,0 +1,40 @@
+module UtilitiesAndTypes where
+
+import Daml.Script
+
+makePartiesFrom names =
+  mapA allocateParty names
+
+type Address = Text
+type RecordKey = (Party, Text)
+type IdKey = (Party, Int)
+
+data Gender 
+  = F
+  | M
+  | X
+  deriving (Eq, Show)
+
+data Role
+    = Doctor
+    | PhysiciansAssistant
+    | Nurse
+    | NursingAssistant
+    | Technician
+    deriving (Eq, Show)
+
+-- Healthcare Record types
+type Diagnosis = Text
+data Prescription = Prescription
+  with
+    drugName: Text
+    dosage: Decimal
+    frequency: Text
+  deriving (Eq, Show)
+
+data HealthRecordContents = HealthRecordContents
+  with
+    visitNotes: Text
+    prescriptions: [Prescription]
+    diagnoses: [Diagnosis]
+  deriving (Eq, Show)

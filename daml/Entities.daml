@@ -1,0 +1,79 @@
+module Entities where
+
+import DA.List
+import UtilitiesAndTypes
+
+-- ASSUMPTIONS: The Party of an entity is the name of that entity
+
+-- Healthcare Patient. Patients own their own Medical Records.
+template Patient
+  with
+    patient: Party
+    primaryProvider: Provider
+    gender: Gender
+    dob: Date
+  where
+    signatory patient
+    observer primaryProvider.provider
+
+    nonconsuming choice ChangePrimaryProvider: ContractId Patient
+      with
+        newPrimaryProvider: Provider
+      controller patient
+      do
+        create this with primaryProvider = newPrimaryProvider
+
+-- An individual providing healthcare.
+-- ASSUMPTIONS: Providers can only work at one Practice at a time
+template Provider
+  with
+    provider: Party
+    providerId: Int
+    practice: Practice
+    role: Role
+    canBeLeadProvider: Bool
+  where
+    signatory provider
+
+    key (provider, providerId): IdKey
+    maintainer key._1
+
+    choice ChangePractice: ContractId Provider
+      with
+          newPractice: Practice
+      controller provider
+      do
+          create this with practice = newPractice
+
+-- A Practice representing a group of Providers
+-- ASSUMPTIONS:
+--    Practices can only have one address
+--    Practices can unilaterally add and remove Providers from their Practice
+template Practice
+  with
+    admin: Party
+    name: Text
+    address: Address
+    providers: [Provider]
+  where
+    ensure unique (map (.provider) providers) && name /= ""
+    signatory admin
+    observer map (.provider) providers
+
+    key (admin, name): RecordKey
+    maintainer key._1
+
+    nonconsuming choice AddProvider: ContractId Practice
+      with
+        newProvider: Provider
+      controller admin
+      do
+        assertMsg "Provider already works for this practice" (notElem newProvider providers) -- Do I need if ensure unique providers??
+        create this with providers = newProvider :: providers
+
+    nonconsuming choice RemoveProvider: ContractId Practice
+      with
+        providerToRemove: Provider
+      controller admin
+      do
+        create this with providers = providerToRemove `delete` providers

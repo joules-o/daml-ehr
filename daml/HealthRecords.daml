@@ -1,0 +1,85 @@
+module HealthRecords where
+
+import DA.List
+import UtilitiesAndTypes
+import Entities
+
+-- These Medical Records are set up such that the Patient has ownership of their own Medical History Records,
+--      and Authorize Providers to add to it, and Practies to view it.
+-- A Patient can Add to their own Medical Records, but they don't have the ability to create VisitRecords.
+template MedicalHistory
+  with
+    patient: Patient
+    visitHistory: [VisitRecord]
+    observers: [Party]
+  where
+    signatory patient.patient
+    observer patient.primaryProvider.provider, observers
+
+    nonconsuming choice AddVisitRecord: ContractId MedicalHistory
+      with
+        recordToAdd: VisitRecord
+      controller recordToAdd.leadProvider.provider
+      do
+        assert (recordToAdd.leadProvider.provider /= patient.patient)
+        create this with visitHistory = recordToAdd :: visitHistory
+
+    nonconsuming choice AddObserver: ContractId MedicalHistory
+      with
+        observerToAdd: Party
+      controller patient.patient
+      do
+        assert (observerToAdd /= patient.patient)
+        create this with observers = observerToAdd :: observers
+
+    nonconsuming choice RemoveObserver: ContractId MedicalHistory
+      with
+        observerToRemove: Party
+      controller patient.patient
+      do
+        create this with observers = observerToRemove `delete` observers    
+
+-- Delegation from a Patient to a Provider to add Visit Records to their medical history
+template ProviderAuthorization
+  with
+    patient: Patient
+    provider: Provider
+  where
+    ensure patient.patient /= provider.provider
+    signatory patient.patient
+    observer provider.provider, provider.practice.admin
+
+    choice WithdrawProviderAuthorization
+      : ()
+      controller patient.patient
+      do return ()
+
+    nonconsuming choice AddVisitRecordProvider: ContractId MedicalHistory
+      with
+        medicalHistoryId: ContractId MedicalHistory
+        recordToAdd: VisitRecord
+      controller provider.provider
+      do
+        exercise medicalHistoryId AddVisitRecord with recordToAdd = recordToAdd
+    
+-- A record of a healthcare Visit between Patient and Provider.
+-- All VisitRecords have a lead Provider managing the Visit (i.e., the doctor seeing the patient)
+--      but secondary providers can edit the Visit Record.
+template VisitRecord
+  with
+    patient: Patient
+    leadProvider: Provider
+    secondaryProviders: [Provider]
+    time: Time
+    contents: HealthRecordContents
+  where
+    signatory leadProvider.provider, map (.provider) secondaryProviders
+    observer patient.patient, leadProvider.practice.admin
+
+    nonconsuming choice AddSecondaryProvider: ContractId VisitRecord
+      with
+        providerToAdd: Provider
+      controller leadProvider.provider
+      do
+        assert (providerToAdd `elem` leadProvider.practice.providers)
+        create this with secondaryProviders = providerToAdd :: secondaryProviders
